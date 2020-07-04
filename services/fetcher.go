@@ -5,7 +5,10 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"strconv"
 	"time"
+
+	"github.com/romiras/url-meta-scraper/pkg"
 )
 
 type (
@@ -28,15 +31,19 @@ func NewHTTPClient() *http.Client {
 			}).Dial,
 			TLSHandshakeTimeout: time.Millisecond * 5000,
 		},
-		Timeout: time.Millisecond * 5000,
+		Timeout: time.Millisecond * 50,
 	}
 }
 
-func (f Fetcher) Fetch(url string) (Bytes, int, error) {
+const MaxFetchBytes = 4096
+
+func (f Fetcher) Fetch(url string) (*pkg.UrlScraped, int, error) {
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, 0, err
 	}
+
+	req.Header.Add("Range", "bytes=0-"+strconv.FormatInt(MaxFetchBytes, 10))
 
 	resp, err := f.Client.Do(req)
 	if err != nil {
@@ -49,11 +56,37 @@ func (f Fetcher) Fetch(url string) (Bytes, int, error) {
 		return nil, resp.StatusCode, err
 	}
 
-	var out Bytes
-	out, err = ioutil.ReadAll(resp.Body)
+	urlScraped := pkg.UrlScraped{}
+	urlScraped.Headers = make(map[string]string)
+	urlScraped.Headers["Content-Encoding"] = getContentType(resp)
+	buf, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		return nil, 0, err
 	}
+	sz := len(buf)
+	if sz > MaxFetchBytes {
+		sz = MaxFetchBytes
+	}
+	urlScraped.Body = string(buf[:sz])
 
-	return out, 0, nil
+	return &urlScraped, 0, nil
 }
+
+func getContentType(r *http.Response) string {
+	contentType := r.Header.Get("Content-type")
+	if contentType == "" {
+		return "application/octet-stream"
+	}
+	return contentType
+}
+
+// var out io.Writer
+// _, err = io.Copy(out, rd)
+// if err != nil {
+// 	log.Fatal(err)
+// }
+
+// buf, err := ioutil.ReadAll(rd)
+// if err != nil {
+// 	log.Fatal(err)
+// }
