@@ -4,7 +4,7 @@ import "time"
 
 type (
 	IConsumer interface {
-		Consume()
+		Consume() (<-chan interface{}, error)
 		Close() error
 	}
 

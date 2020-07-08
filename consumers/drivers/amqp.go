@@ -33,18 +33,19 @@ func (pr *AmqpConsumer) Close() error {
 	return pr.conn.Close()
 }
 
-func (pr *AmqpConsumer) Consume() (<-chan consumers.Delivery, error) {
+func (pr *AmqpConsumer) Consume() (<-chan interface{}, error) {
+	var msgs <-chan interface{}
 	// optionsMap := options.OptionsToMap(producerOptions)
 	// metricName := options.GetOptionOrDefault(optionsMap, "metric_name", "task-producer").(string)
 
 	ch, err := pr.getChannel()
 	if err != nil {
-		return "", err
+		return msgs, err
 	}
 	defer ch.Close()
 
 	// Consume(queue, consumer string, autoAck, exclusive, noLocal, noWait bool, args Table)
-	msgs, err := ch.Consume(
+	amqpMsgs, err := ch.Consume(
 		pr.topic, // queue
 		"",       // consumer
 		true,     // auto-ack
@@ -54,10 +55,17 @@ func (pr *AmqpConsumer) Consume() (<-chan consumers.Delivery, error) {
 		nil,      // args
 	)
 	if err != nil {
-		return "", err
+		return msgs, err
 	}
 
-	return "", nil
+	var castCh chan interface{}
+	go func() {
+		for msg := range amqpMsgs {
+			castCh <- msg
+		}
+	}()
+
+	return castCh, nil
 }
 
 func (pr *AmqpConsumer) getChannel() (*amqp.Channel, error) {
