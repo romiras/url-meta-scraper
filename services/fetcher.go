@@ -49,7 +49,9 @@ func (f Fetcher) Fetch(url string) (*pkg.UrlScraped, int, error) {
 	if err != nil {
 		return nil, 0, err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode >= 400 {
 		log.Print("Fetch failed")
