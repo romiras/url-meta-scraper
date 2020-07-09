@@ -3,10 +3,12 @@ package main
 import (
 	"encoding/json"
 	"log"
-	"time"
+	"os"
 
+	"github.com/romiras/url-meta-scraper/consumers/drivers"
 	"github.com/romiras/url-meta-scraper/registries"
-	"github.com/romiras/url-meta-scraper/services"
+	"github.com/sirupsen/logrus"
+	"github.com/streadway/amqp"
 )
 
 var urlsChan chan string
@@ -70,30 +72,84 @@ func Retry(reg *registries.Registry, url string, attempts uint) {
 	// Consider Exponential Backoff algorithm  https://blog.miguelgrinberg.com/post/how-to-retry-with-class
 }
 
-func main() {
-	reg := registries.NewRegistry()
-	reg.RedisSubscriber = services.NewRedisSubscriber("urls")
-	reg.RedisPublisher = services.NewRedisPublisher()
-
-	urlsChan = make(chan string)
-	go func() {
-		reg.RedisSubscriber.Consume(urlsChan)
-	}()
-
-	go func() {
-		for url := range urlsChan {
-			log.Println(url)
-		}
-	}()
-
-	Do(reg)
-	time.Sleep(time.Millisecond)
-
-	err := reg.RedisSubscriber.Close()
-	if err != nil {
-		log.Println(err.Error())
-		return
+func newLogger() *logrus.Logger {
+	logger := logrus.New()
+	if os.Getenv("GO_ENV") == "production" {
+		logger.SetFormatter(&logrus.JSONFormatter{})
 	}
+	return logger
+}
+
+const DefaultAmqpURI = "amqp://guest:guest@localhost:5672"
+
+func main() {
+	logger := newLogger()
+
+	amqpURI := os.Getenv("AMQP_URI")
+	if amqpURI == "" {
+		amqpURI = DefaultAmqpURI
+	}
+
+	cons, err := drivers.NewAmqpConsumer(amqpURI, "urls", logger)
+	if err != nil {
+		logger.Fatal(err)
+	}
+
+	done := make(chan bool)
+	go func() {
+		var msgs <-chan interface{}
+		logger.Info("Consume")
+		msgs, err := cons.Consume()
+		if err != nil {
+			logger.Fatal(err)
+		}
+
+		for msg := range msgs {
+			logger.Info("-> msg")
+			delivery, ok := msg.(amqp.Delivery)
+			if ok {
+				logger.Info(string(delivery.Body))
+			} else {
+				logger.Info("damn")
+			}
+		}
+		done <- true
+	}()
+
+	<-done
+
+	err = cons.Close()
+	if err != nil {
+		logger.Fatal(err)
+	}
+
+	logger.Info("Finish")
+
+	/*
+		reg := registries.NewRegistry()
+		reg.RedisSubscriber = services.NewRedisSubscriber("urls")
+		reg.RedisPublisher = services.NewRedisPublisher()
+
+		urlsChan = make(chan string)
+		go func() {
+			reg.RedisSubscriber.Consume(urlsChan)
+		}()
+
+		go func() {
+			for url := range urlsChan {
+				log.Println(url)
+			}
+		}()
+
+		Do(reg)
+		time.Sleep(time.Millisecond)
+
+		err := reg.RedisSubscriber.Close()
+		if err != nil {
+			log.Println(err.Error())
+			return
+		}
+	*/
 }
 
 // func worker(sub *services.RedisSubscriber, done chan bool) {

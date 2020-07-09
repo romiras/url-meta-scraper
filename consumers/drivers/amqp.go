@@ -1,6 +1,8 @@
 package drivers
 
 import (
+	"fmt"
+
 	"github.com/romiras/url-meta-scraper/consumers"
 	"github.com/romiras/url-meta-scraper/log"
 
@@ -58,12 +60,16 @@ func (pr *AmqpConsumer) Consume() (<-chan interface{}, error) {
 		return msgs, err
 	}
 
+	fmt.Println("Got amqpMsgs")
 	var castCh chan interface{}
 	go func() {
+		fmt.Println("copy amqpMsgs")
 		for msg := range amqpMsgs {
 			castCh <- msg
 		}
+		fmt.Println("/copy amqpMsgs")
 	}()
+	fmt.Println("/Consume")
 
 	return castCh, nil
 }
