@@ -1,10 +1,17 @@
 package consumers
 
-import "time"
+import (
+	"time"
+
+	"github.com/romiras/url-meta-scraper/log"
+	"github.com/streadway/amqp"
+)
 
 type (
+	HandleFunc func(<-chan amqp.Delivery /*chan error,*/, log.Logger)
+
 	IConsumer interface {
-		Consume() (<-chan interface{}, error)
+		Consume(handleFunc HandleFunc, logger log.Logger) error
 		Close() error
 	}
 

@@ -1,19 +1,19 @@
 package main
 
 import (
-	"encoding/json"
-	"log"
+	"fmt"
 	"os"
 
 	"github.com/romiras/url-meta-scraper/consumers/drivers"
-	"github.com/romiras/url-meta-scraper/registries"
+	"github.com/romiras/url-meta-scraper/log"
 	"github.com/sirupsen/logrus"
 	"github.com/streadway/amqp"
 )
 
 var urlsChan chan string
 
-func scanURLs(reg *registries.Registry, urlsRcv chan string, payloadsTx chan []byte) {
+/*
+func scanURLs(reg *registries.Registry, urlsRcv chan string, payloadsTx chan []byte, logger log.Logger) {
 	for url := range urlsRcv {
 		urlScraped, attempts, err := reg.FetchHelper.Try(reg.Fetcher, url, 0)
 		if err != nil {
@@ -21,7 +21,7 @@ func scanURLs(reg *registries.Registry, urlsRcv chan string, payloadsTx chan []b
 				GiveUp(err)
 			} else {
 				// Retry(reg, url, attempts)
-				log.Println("Retry", attempts, url)
+				logger.Info("Retry", attempts, url)
 				// urlsRcv <- url
 			}
 			continue
@@ -71,6 +71,7 @@ func Retry(reg *registries.Registry, url string, attempts uint) {
 	// }
 	// Consider Exponential Backoff algorithm  https://blog.miguelgrinberg.com/post/how-to-retry-with-class
 }
+*/
 
 func newLogger() *logrus.Logger {
 	logger := logrus.New()
@@ -81,6 +82,30 @@ func newLogger() *logrus.Logger {
 }
 
 const DefaultAmqpURI = "amqp://guest:guest@localhost:5672"
+
+/*
+func handle(deliveries <-chan amqp.Delivery, done chan error, logger log.Logger) {
+	for msg := range deliveries {
+		logger.Info("-> msg")
+		fmt.Println(string(msg.Body))
+	}
+	logger.Info("handle: deliveries channel closed")
+	done <- nil
+}
+*/
+
+func handle(deliveries <-chan amqp.Delivery, logger log.Logger) {
+	multiAck := false
+	for msg := range deliveries {
+		logger.Info("-> msg")
+		fmt.Println(string(msg.Body))
+		err := msg.Ack(multiAck)
+		if err != nil {
+			logger.Error(err)
+		}
+	}
+	logger.Info("handle: deliveries channel closed / no new messages")
+}
 
 func main() {
 	logger := newLogger()
@@ -95,28 +120,15 @@ func main() {
 		logger.Fatal(err)
 	}
 
-	done := make(chan bool)
-	go func() {
-		var msgs <-chan interface{}
-		logger.Info("Consume")
-		msgs, err := cons.Consume()
-		if err != nil {
-			logger.Fatal(err)
-		}
+	logger.Info("Consume")
+	// var msgs <-chan amqp.Delivery
+	err = cons.Consume(handle, logger)
+	if err != nil {
+		logger.Fatal(err)
+	}
 
-		for msg := range msgs {
-			logger.Info("-> msg")
-			delivery, ok := msg.(amqp.Delivery)
-			if ok {
-				logger.Info(string(delivery.Body))
-			} else {
-				logger.Info("damn")
-			}
-		}
-		done <- true
-	}()
-
-	<-done
+	logger.Info(" [*] Waiting for messages. To exit press CTRL+C")
+	select {}
 
 	err = cons.Close()
 	if err != nil {

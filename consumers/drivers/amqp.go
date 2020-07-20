@@ -1,8 +1,6 @@
 package drivers
 
 import (
-	"fmt"
-
 	"github.com/romiras/url-meta-scraper/consumers"
 	"github.com/romiras/url-meta-scraper/log"
 
@@ -13,6 +11,7 @@ type AmqpConsumer struct {
 	conn    *amqp.Connection
 	topic   string
 	channel *amqp.Channel
+	done    chan error
 	logger  log.Logger
 }
 
@@ -27,6 +26,7 @@ func NewAmqpConsumer(amqpURI, topic string, logger log.Logger) (consumers.IConsu
 	return &AmqpConsumer{
 		conn:   conn,
 		topic:  topic,
+		done:   make(chan error),
 		logger: logger,
 	}, nil
 }
@@ -35,43 +35,43 @@ func (pr *AmqpConsumer) Close() error {
 	return pr.conn.Close()
 }
 
-func (pr *AmqpConsumer) Consume() (<-chan interface{}, error) {
-	var msgs <-chan interface{}
+func (pr *AmqpConsumer) Consume(handleFunc consumers.HandleFunc, logger log.Logger) error {
+	var msgs <-chan amqp.Delivery
 	// optionsMap := options.OptionsToMap(producerOptions)
 	// metricName := options.GetOptionOrDefault(optionsMap, "metric_name", "task-producer").(string)
 
 	ch, err := pr.getChannel()
 	if err != nil {
-		return msgs, err
+		return err
 	}
-	defer ch.Close()
+	defer func() {
+		err = ch.Close()
+		if err != nil {
+			logger.Error(err)
+			return
+		}
+	}()
 
 	// Consume(queue, consumer string, autoAck, exclusive, noLocal, noWait bool, args Table)
-	amqpMsgs, err := ch.Consume(
+	msgs, err = ch.Consume(
 		pr.topic, // queue
-		"",       // consumer
-		true,     // auto-ack
+		"",       // consumer tag
+		false,    // auto-ack
 		false,    // exclusive
 		false,    // no-local
 		false,    // no-wait
 		nil,      // args
 	)
 	if err != nil {
-		return msgs, err
+		return err
 	}
 
-	fmt.Println("Got amqpMsgs")
-	var castCh chan interface{}
 	go func() {
-		fmt.Println("copy amqpMsgs")
-		for msg := range amqpMsgs {
-			castCh <- msg
-		}
-		fmt.Println("/copy amqpMsgs")
+		handleFunc(msgs /*pr.done,*/, logger)
+		pr.done <- nil
 	}()
-	fmt.Println("/Consume")
 
-	return castCh, nil
+	return nil
 }
 
 func (pr *AmqpConsumer) getChannel() (*amqp.Channel, error) {
