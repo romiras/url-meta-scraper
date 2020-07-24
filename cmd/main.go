@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/romiras/url-meta-scraper/consumers"
 	"github.com/romiras/url-meta-scraper/consumers/drivers"
 	"github.com/romiras/url-meta-scraper/log"
 	"github.com/sirupsen/logrus"
@@ -80,11 +81,31 @@ func main() {
 		logger.Fatal(err)
 	}
 
+	err = c.Cons(handler, logger)
+	if err != nil {
+		logger.Fatal(err)
+	}
+
+	logger.Info("running forever")
+	select {}
+
+	logger.Info("shutting down")
+
+	if err := c.Shutdown(); err != nil {
+		logger.Fatalf("error during shutdown: %s", err)
+	}
+}
+
+func (c *Consumer) Cons(handleFunc consumers.HandleFunc, logger log.Logger) error {
+	var err error
+
 	logger.Info("got Connection, getting Channel")
 	c.channel, err = c.conn.Channel()
 	if err != nil {
 		logger.Fatal(fmt.Errorf("Channel: %s", err))
 	}
+
+	queue := "urls"
 
 	logger.Info("Queue bound to Exchange, starting Consume (consumer tag '%s')", c.tag)
 	deliveries, err := c.channel.Consume(
@@ -105,14 +126,20 @@ func main() {
 		c.done <- nil
 	}()
 
-	logger.Info("running forever")
-	select {}
+	return nil
+}
 
-	logger.Info("shutting down")
-
-	if err := c.Shutdown(); err != nil {
-		logger.Fatalf("error during shutdown: %s", err)
+func handler(deliveries <-chan amqp.Delivery, logger log.Logger) {
+	multiAck := false
+	for msg := range deliveries {
+		logger.Info("-> msg")
+		fmt.Println(string(msg.Body))
+		err := msg.Ack(multiAck)
+		if err != nil {
+			logger.Error(err)
+		}
 	}
+	logger.Info("handle: deliveries channel closed / no new messages")
 }
 
 func NewConsumer(amqpURI, queue, ctag string, logger log.Logger) (*Consumer, error) {
