@@ -28,7 +28,7 @@ func init() {
 }
 
 func main1() {
-	c, err := NewConsumer(*uri, *exchange, *exchangeType, *queue, *bindingKey, *consumerTag)
+	c, err := NewConsumer1(*uri, *exchange, *exchangeType, *queue, *bindingKey, *consumerTag)
 	if err != nil {
 		log.Fatalf("%s", err)
 	}
@@ -55,7 +55,7 @@ type Consumer struct {
 	done    chan error
 }
 
-func NewConsumer(amqpURI, exchange, exchangeType, queue, key, ctag string) (*Consumer, error) {
+func NewConsumer1(amqpURI, exchange, exchangeType, queue, key, ctag string) (*Consumer, error) {
 	c := &Consumer{
 		conn:    nil,
 		channel: nil,

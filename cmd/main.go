@@ -115,6 +115,73 @@ func main() {
 		amqpURI = DefaultAmqpURI
 	}
 
+	c, err := NewConsumer(amqpURI, "urls", "", logger)
+	if err != nil {
+		logger.Fatal(err)
+	}
+
+	logger.Info("running forever")
+	select {}
+
+	logger.Info("shutting down")
+
+	if err := c.Shutdown(); err != nil {
+		logger.Fatalf("error during shutdown: %s", err)
+	}
+}
+
+func NewConsumer(amqpURI, queue, ctag string, logger log.Logger) (*Consumer, error) {
+	c := &Consumer{
+		conn:    nil,
+		channel: nil,
+		tag:     ctag,
+		done:    make(chan error),
+	}
+
+	var err error
+
+	logger.Info("dialing %s", amqpURI)
+	c.conn, err = amqp.Dial(amqpURI)
+	if err != nil {
+		return nil, fmt.Errorf("Dial: %s", err)
+	}
+
+	logger.Info("got Connection, getting Channel")
+	c.channel, err = c.conn.Channel()
+	if err != nil {
+		return nil, fmt.Errorf("Channel: %s", err)
+	}
+
+	logger.Info("Queue bound to Exchange, starting Consume (consumer tag '%s')", c.tag)
+	deliveries, err := c.channel.Consume(
+		queue, // name
+		c.tag, // consumerTag,
+		false, // noAck
+		false, // exclusive
+		false, // noLocal
+		false, // noWait
+		nil,   // arguments
+	)
+	if err != nil {
+		return nil, fmt.Errorf("Queue Consume: %s", err)
+	}
+
+	go func() {
+		handle(deliveries, logger)
+		c.done <- nil
+	}()
+
+	return c, nil
+}
+
+func main0() {
+	logger := newLogger()
+
+	amqpURI := os.Getenv("AMQP_URI")
+	if amqpURI == "" {
+		amqpURI = DefaultAmqpURI
+	}
+
 	cons, err := drivers.NewAmqpConsumer(amqpURI, "urls", logger)
 	if err != nil {
 		logger.Fatal(err)
