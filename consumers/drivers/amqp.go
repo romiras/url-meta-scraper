@@ -1,6 +1,8 @@
 package drivers
 
 import (
+	"fmt"
+
 	"github.com/romiras/url-meta-scraper/consumers"
 	"github.com/romiras/url-meta-scraper/log"
 
@@ -10,6 +12,7 @@ import (
 type AmqpConsumer struct {
 	conn    *amqp.Connection
 	topic   string
+	tag     string
 	channel *amqp.Channel
 	done    chan error
 	logger  log.Logger
@@ -26,6 +29,7 @@ func NewAmqpConsumer(amqpURI, topic string, logger log.Logger) (consumers.IConsu
 	return &AmqpConsumer{
 		conn:   conn,
 		topic:  topic,
+		tag:    "consumer-1",
 		done:   make(chan error),
 		logger: logger,
 	}, nil
@@ -36,38 +40,32 @@ func (pr *AmqpConsumer) Close() error {
 }
 
 func (pr *AmqpConsumer) Consume(handleFunc consumers.HandleFunc, logger log.Logger) error {
-	var msgs <-chan amqp.Delivery
+	var err error
 	// optionsMap := options.OptionsToMap(producerOptions)
 	// metricName := options.GetOptionOrDefault(optionsMap, "metric_name", "task-producer").(string)
 
-	ch, err := pr.getChannel()
+	logger.Info("got Connection, getting Channel")
+	pr.channel, err = pr.getChannel()
 	if err != nil {
 		return err
 	}
-	defer func() {
-		err = ch.Close()
-		if err != nil {
-			logger.Error(err)
-			return
-		}
-	}()
 
-	// Consume(queue, consumer string, autoAck, exclusive, noLocal, noWait bool, args Table)
-	msgs, err = ch.Consume(
-		pr.topic, // queue
-		"",       // consumer tag
-		false,    // auto-ack
+	logger.Info(fmt.Sprintf("Queue bound to Exchange, starting Consume (consumer tag '%s')", pr.tag))
+	deliveries, err := pr.channel.Consume(
+		pr.topic, // name
+		pr.tag,   // consumerTag,
+		false,    // noAck
 		false,    // exclusive
-		false,    // no-local
-		false,    // no-wait
-		nil,      // args
+		false,    // noLocal
+		false,    // noWait
+		nil,      // arguments
 	)
 	if err != nil {
-		return err
+		logger.Fatal(fmt.Errorf("Queue Consume: %s", err))
 	}
 
 	go func() {
-		handleFunc(msgs /*pr.done,*/, logger)
+		handleFunc(deliveries, logger)
 		pr.done <- nil
 	}()
 
@@ -87,45 +85,3 @@ func (pr *AmqpConsumer) getChannel() (*amqp.Channel, error) {
 
 	return pr.channel, nil
 }
-
-/*
-msgs, err := ch.Consume(
-  q.Name, // queue
-  "",     // consumer
-  true,   // auto-ack
-  false,  // exclusive
-  false,  // no-local
-  false,  // no-wait
-  nil,    // args
-)
-failOnError(err, "Failed to register a consumer")
-
-forever := make(chan bool)
-
-go func() {
-  for d := range msgs {
-    log.Printf("Received a message: %s", d.Body)
-  }
-}()
-
-log.Printf(" [*] Waiting for messages. To exit press CTRL+C")
-<-forever
-*/
-
-/*
-   go func(con *amqp.Connection) {
-       channel, _ := connection.Channel()
-       defer channel.Close()
-       durable, exclusive := false, false
-       autoDelete, noWait := true, true
-       q, _ := channel.QueueDeclare("test", durable, autoDelete, exclusive, noWait, nil)
-       channel.QueueBind(q.Name, "#", "amq.topic", false, nil)
-       autoAck, exclusive, noLocal, noWait := false, false, false, false
-       messages, _ := channel.Consume(q.Name, "", autoAck, exclusive, noLocal, noWait, nil)
-       multiAck := false
-       for msg := range messages {
-           fmt.Println("Body:", string(msg.Body), "Timestamp:", msg.Timestamp)
-           msg.Ack(multiAck)
-       }
-   }(connection)
-*/
