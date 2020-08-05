@@ -31,3 +31,14 @@ func NewRegistry() *Registry {
 		logger,
 	}
 }
+
+func (reg *Registry) Close() {
+	var err error
+	if err = reg.URLSubscriber.Close(); err != nil {
+		reg.Logger.Error(err)
+	}
+
+	if err = reg.ScrapedURLPublisher.Close(); err != nil {
+		reg.Logger.Error(err)
+	}
+}

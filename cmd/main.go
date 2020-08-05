@@ -1,20 +1,15 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
-	"time"
 
-	"github.com/romiras/url-meta-scraper/consumers/drivers"
 	"github.com/romiras/url-meta-scraper/log"
 	"github.com/romiras/url-meta-scraper/registries"
 	"github.com/streadway/amqp"
 )
 
+/*
 const DefaultAmqpURI = "amqp://guest:guest@localhost:5672"
-
-var urlsChan chan string
 
 func scanURLs(reg *registries.Registry, urlsRcv chan string, payloadsTx chan []byte, logger log.Logger) {
 	for url := range urlsRcv {
@@ -41,9 +36,14 @@ func scanURLs(reg *registries.Registry, urlsRcv chan string, payloadsTx chan []b
 
 func sender(reg *registries.Registry, payloadsRcv chan []byte) {
 	for payload := range payloadsRcv {
-		err := reg.RedisPublisher.Publish("scraped-urls", payload)
+		task, err := producers.NewTask(payload)
 		if err != nil {
-			log.Fatal(err)
+			reg.Logger.Error(err)
+		}
+
+		_, err = reg.ScrapedURLPublisher.Produce(task)
+		if err != nil {
+			reg.Logger.Error(err)
 		}
 	}
 }
@@ -74,6 +74,7 @@ func Retry(reg *registries.Registry, url string, attempts uint) {
 	// }
 	// Consider Exponential Backoff algorithm  https://blog.miguelgrinberg.com/post/how-to-retry-with-class
 }
+*/
 
 func handler(deliveries <-chan amqp.Delivery, logger log.Logger) {
 	multiAck := false
@@ -90,21 +91,9 @@ func handler(deliveries <-chan amqp.Delivery, logger log.Logger) {
 
 func main() {
 	reg := registries.NewRegistry()
-	// reg.RedisSubscriber = services.NewRedisSubscriber("urls")
-	// reg.RedisPublisher = services.NewRedisPublisher()
+	defer reg.Close()
 
-	amqpURI := os.Getenv("AMQP_URI")
-	if amqpURI == "" {
-		amqpURI = DefaultAmqpURI
-	}
-
-	queue := "urls"
-	cons, err := drivers.NewAmqpConsumer(amqpURI, queue, reg.Logger)
-	if err != nil {
-		reg.Logger.Fatal(err)
-	}
-
-	err = cons.Consume(handler, reg.Logger)
+	err := reg.URLSubscriber.Consume(handler, reg.Logger)
 	if err != nil {
 		reg.Logger.Fatal(err)
 	}
@@ -113,31 +102,4 @@ func main() {
 	select {}
 
 	reg.Logger.Info("shutting down")
-
-	if err := cons.Close(); err != nil {
-		reg.Logger.Fatalf("error during shutdown: %s", err)
-	}
-
-	/// Old
-
-	urlsChan = make(chan string)
-	go func() {
-		reg.RedisSubscriber.Consume(urlsChan)
-	}()
-
-	go func() {
-		for url := range urlsChan {
-			reg.Logger.Info(url)
-		}
-	}()
-
-	Do(reg)
-	time.Sleep(time.Millisecond)
-
-	err := reg.RedisSubscriber.Close()
-	if err != nil {
-		reg.Logger.Info(err.Error())
-		return
-	}
-
 }
