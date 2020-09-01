@@ -8,6 +8,8 @@ import (
 	"github.com/romiras/url-meta-scraper/producers/drivers"
 )
 
+const DefaultScrapedURLQueue = "scraped-urls"
+
 func NewScrapedURLPublisher(logger log.Logger) producers.TaskProducer {
 	amqpURI := os.Getenv("AMQP_URI")
 	if amqpURI == "" {
@@ -16,7 +18,7 @@ func NewScrapedURLPublisher(logger log.Logger) producers.TaskProducer {
 
 	queue := os.Getenv("SCRAPED_URLS_QUEUE_NAME")
 	if queue == "" {
-		queue = DefaultURLQueue
+		queue = DefaultScrapedURLQueue
 	}
 
 	producer, err := drivers.NewAmqpProducer(amqpURI, queue, logger)
