@@ -1,8 +1,6 @@
 package registries
 
 import (
-	"encoding/json"
-
 	"github.com/romiras/url-meta-scraper/consumers"
 	"github.com/romiras/url-meta-scraper/initializers"
 	"github.com/romiras/url-meta-scraper/log"
@@ -68,12 +66,7 @@ func (reg *Registry) handleURL(url string) bool {
 }
 
 func (reg *Registry) produceScrapedURLTask(urlScraped *pkg.UrlScraped) error {
-	payload, err := json.Marshal(urlScraped)
-	if err != nil {
-		panic(err)
-	}
-
-	task, err := producers.NewTask(payload)
+	task, err := producers.NewTask(urlScraped)
 	if err != nil {
 		return err
 	}

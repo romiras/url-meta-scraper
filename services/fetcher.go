@@ -68,9 +68,6 @@ func (f Fetcher) Fetch(url string) (*pkg.UrlScraped, int, error) {
 		return nil, resp.StatusCode, err
 	}
 
-	urlScraped := pkg.UrlScraped{}
-	urlScraped.Headers = make(map[string]string)
-	urlScraped.Headers["Content-Encoding"] = getContentType(resp)
 	buf, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		return nil, 0, err
@@ -79,7 +76,16 @@ func (f Fetcher) Fetch(url string) (*pkg.UrlScraped, int, error) {
 	if sz > MaxFetchBytes {
 		sz = MaxFetchBytes
 	}
-	urlScraped.Body = string(buf[:sz])
+
+	headers := make(map[string]string)
+	headers["Content-Encoding"] = getContentType(resp)
+
+	urlScraped := pkg.UrlScraped{
+		URL:       url,
+		UpdatedAt: time.Now().Unix(),
+		Headers:   headers,
+		Body:      string(buf[:sz]),
+	}
 
 	return &urlScraped, 0, nil
 }
