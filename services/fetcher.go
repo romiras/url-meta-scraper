@@ -24,6 +24,11 @@ type (
 )
 
 func NewHTTPClient() *http.Client {
+	err := loadUserAgents()
+	if err != nil {
+		log.Fatalln(err)
+	}
+
 	return &http.Client{
 		Transport: &http.Transport{
 			Dial: (&net.Dialer{
@@ -44,6 +49,11 @@ func (f Fetcher) Fetch(url string) (*pkg.UrlScraped, int, error) {
 	}
 
 	req.Header.Add("Range", "bytes=0-"+strconv.FormatInt(MaxFetchBytes, 10))
+
+	ua := getRandomUA()
+	if ua != "" {
+		req.Header.Add("User-Agent", ua)
+	}
 
 	resp, err := f.Client.Do(req)
 	if err != nil {

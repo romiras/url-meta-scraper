@@ -48,9 +48,3 @@ func CanRetry(statusCode int, attempts uint, err error) bool {
 	}
 	return true
 }
-
-// func Retry(url string, attempts uint) {
-// 	fmt.Println("\tRetry", attempts, url, "-> failed-urls")
-// 	// TODO: (URL, attempt nr.) -> queue 'failed-urls'
-// 	// Consider Exponential Backoff algorithm  https://blog.miguelgrinberg.com/post/how-to-retry-with-class
-// }
