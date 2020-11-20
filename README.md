@@ -15,3 +15,7 @@ WIP
 
 - [x] ~~Producer for downloaded URLs~~
 - [ ] Producer for failed URLs
+
+## License
+
+See file LICENSE.
