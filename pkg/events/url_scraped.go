@@ -1,6 +1,6 @@
-package pkg
+package events
 
-type UrlScraped struct {
+type UrlScrapedEvent struct {
 	URL       string            `json:"url"`
 	UpdatedAt int64             `json:"updated_at"`
 	Body      string            `json:"body"`

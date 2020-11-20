@@ -3,9 +3,12 @@ package services
 import (
 	"errors"
 	"fmt"
+	"log"
+	"net/http"
 	"syscall"
 
 	"github.com/romiras/url-meta-scraper/pkg"
+	"github.com/romiras/url-meta-scraper/pkg/events"
 )
 
 // Dispatcher ?
@@ -15,24 +18,22 @@ type FetchHelper struct {
 
 const MaxAttempts = 3
 
-func (hlp FetchHelper) Try(fetcher *Fetcher, url string, attempts uint) (*pkg.UrlScraped, uint, error) {
+func (hlp FetchHelper) Try(fetcher *Fetcher, url string, attempts uint) (*events.UrlScrapedEvent, uint, error) {
 	urlScraped, statusCode, err := fetcher.Fetch(url)
 	attempts++
 	// fmt.Println("\t", attempts, statusCode, url)
-	if err != nil {
-		if CanRetry(statusCode, attempts, err) {
-			// Retry(url, attempts)
-			return nil, attempts, err
+	if err != nil || statusCode != http.StatusOK {
+		if err != nil {
+			log.Print("\tError:", err.Error())
 		} else {
-			return nil, 0, err // give up
+			log.Print("\tFetch failed")
 		}
+		if CanRetry(statusCode, attempts, err) {
+			return nil, attempts, err
+		}
+		return nil, pkg.NoRetry, err // give up
 	}
-
-	if urlScraped == nil {
-		return nil, 0, errors.New("UrlScraped is nil")
-	}
-
-	return urlScraped, 0, nil
+	return urlScraped, pkg.NoRetry, nil
 }
 
 func CanRetry(statusCode int, attempts uint, err error) bool {

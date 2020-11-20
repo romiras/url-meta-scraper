@@ -1,10 +1,13 @@
 package registries
 
 import (
+	"time"
+
 	"github.com/romiras/url-meta-scraper/consumers"
 	"github.com/romiras/url-meta-scraper/initializers"
 	"github.com/romiras/url-meta-scraper/log"
 	"github.com/romiras/url-meta-scraper/pkg"
+	"github.com/romiras/url-meta-scraper/pkg/events"
 	"github.com/romiras/url-meta-scraper/producers"
 	"github.com/romiras/url-meta-scraper/services"
 	"github.com/streadway/amqp"
@@ -15,6 +18,7 @@ type Registry struct {
 	FetchHelper         *services.FetchHelper
 	URLSubscriber       consumers.IConsumer
 	ScrapedURLPublisher producers.TaskProducer
+	FailedURLPublisher  producers.TaskProducer
 	Logger              log.Logger
 }
 
@@ -22,6 +26,7 @@ func NewRegistry() *Registry {
 	logger := initializers.NewLogger()
 	urlSubscriber := initializers.NewURLSubscriber(logger)
 	scrapedURLPublisher := initializers.NewScrapedURLPublisher(logger)
+	failedURLPublisher := initializers.NewFailedURLPublisher(logger)
 
 	return &Registry{
 		&services.Fetcher{
@@ -30,6 +35,7 @@ func NewRegistry() *Registry {
 		&services.FetchHelper{},
 		urlSubscriber,
 		scrapedURLPublisher,
+		failedURLPublisher,
 		logger,
 	}
 }
@@ -48,7 +54,7 @@ func (reg *Registry) Close() {
 func (reg *Registry) handleURL(url string) bool {
 	urlScraped, attempts, err := reg.FetchHelper.Try(reg.Fetcher, url, 0)
 	if err != nil {
-		if attempts == 0 {
+		if attempts == pkg.NoRetry {
 			reg.Logger.Info("Giving up", err.Error())
 		} else {
 			reg.Retry(url, attempts)
@@ -65,7 +71,7 @@ func (reg *Registry) handleURL(url string) bool {
 	return true
 }
 
-func (reg *Registry) produceScrapedURLTask(urlScraped *pkg.UrlScraped) error {
+func (reg *Registry) produceScrapedURLTask(urlScraped *events.UrlScrapedEvent) error {
 	task, err := producers.NewTask(urlScraped)
 	if err != nil {
 		return err
@@ -79,14 +85,31 @@ func (reg *Registry) produceScrapedURLTask(urlScraped *pkg.UrlScraped) error {
 	return nil
 }
 
+func (reg *Registry) produceFailedURLTask(urlFailed *events.UrlFailedEvent) error {
+	task, err := producers.NewTask(urlFailed)
+	if err != nil {
+		return err
+	}
+
+	_, err = reg.FailedURLPublisher.Produce(task)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (reg *Registry) Retry(url string, attempts uint) {
 	reg.Logger.Info("\tRetry", attempts, url, " -> failed-urls")
-	// TODO: (URL, attempt nr.) -> queue 'failed-urls'
-	// err := reg.RedisPublisher.Publish("failed-urls", payload)
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
-	// Consider Exponential Backoff algorithm  https://blog.miguelgrinberg.com/post/how-to-retry-with-class
+	urlFailed := events.UrlFailedEvent{
+		URL:      url,
+		FailedAt: time.Now().Unix(),
+		Attempts: attempts,
+	}
+	err := reg.produceFailedURLTask(&urlFailed)
+	if err != nil {
+		reg.Logger.Fatal(err)
+	}
 }
 
 func (reg *Registry) ConsumerHandler(deliveries <-chan amqp.Delivery, logger log.Logger) {
@@ -102,28 +125,3 @@ func (reg *Registry) ConsumerHandler(deliveries <-chan amqp.Delivery, logger log
 	}
 	logger.Info("handle: deliveries channel closed / no new messages")
 }
-
-/*
-func (reg *Registry) scanURLs(urlsRcv chan string, payloadsTx chan []byte) {
-	for url := range urlsRcv {
-		urlScraped, attempts, err := reg.FetchHelper.Try(reg.Fetcher, url, 0)
-		if err != nil {
-			if attempts == 0 {
-				reg.Logger.Info("Giving up", err.Error())
-			} else {
-				// Retry(reg, url, attempts)
-				reg.Logger.Info("Retry", attempts, url)
-				// urlsRcv <- url
-			}
-			continue
-		}
-
-		payload, err := json.Marshal(urlScraped)
-		if err != nil {
-			reg.Logger.Fatal(err)
-		}
-
-		payloadsTx <- payload
-	}
-}
-*/

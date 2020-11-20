@@ -8,13 +8,13 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/romiras/url-meta-scraper/pkg"
+	"github.com/romiras/url-meta-scraper/pkg/events"
 )
 
 type (
 	Bytes []byte
 
-	FetcherIntf interface {
+	IFetcher interface {
 		Fetch(url string) (Bytes, error)
 	}
 
@@ -36,16 +36,17 @@ func NewHTTPClient() *http.Client {
 			}).Dial,
 			TLSHandshakeTimeout: time.Millisecond * 5000,
 		},
-		Timeout: time.Millisecond * 50,
+		Timeout: time.Millisecond * 1500,
 	}
 }
 
 const MaxFetchBytes = 4096
 
-func (f Fetcher) Fetch(url string) (*pkg.UrlScraped, int, error) {
+func (f Fetcher) Fetch(url string) (*events.UrlScrapedEvent, int, error) {
+	noStatusCode := int(-1)
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		return nil, 0, err
+		return nil, noStatusCode, err
 	}
 
 	req.Header.Add("Range", "bytes=0-"+strconv.FormatInt(MaxFetchBytes, 10))
@@ -57,20 +58,19 @@ func (f Fetcher) Fetch(url string) (*pkg.UrlScraped, int, error) {
 
 	resp, err := f.Client.Do(req)
 	if err != nil {
-		return nil, 0, err
+		return nil, noStatusCode, err
 	}
 	defer func() {
 		_ = resp.Body.Close()
 	}()
 
-	if resp.StatusCode >= 400 {
-		log.Print("Fetch failed")
-		return nil, resp.StatusCode, err
+	if resp.StatusCode != http.StatusOK {
+		return nil, resp.StatusCode, nil
 	}
 
 	buf, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		return nil, 0, err
+		return nil, noStatusCode, err
 	}
 	sz := len(buf)
 	if sz > MaxFetchBytes {
@@ -80,14 +80,14 @@ func (f Fetcher) Fetch(url string) (*pkg.UrlScraped, int, error) {
 	headers := make(map[string]string)
 	headers["Content-Encoding"] = getContentType(resp)
 
-	urlScraped := pkg.UrlScraped{
+	urlScraped := events.UrlScrapedEvent{
 		URL:       url,
 		UpdatedAt: time.Now().Unix(),
 		Headers:   headers,
 		Body:      string(buf[:sz]),
 	}
 
-	return &urlScraped, 0, nil
+	return &urlScraped, resp.StatusCode, nil
 }
 
 func getContentType(r *http.Response) string {
