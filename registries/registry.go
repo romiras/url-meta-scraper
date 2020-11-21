@@ -53,6 +53,10 @@ func (reg *Registry) Close() {
 }
 
 func (reg *Registry) handleURL(urlEvent *events.UrlEvent) bool {
+	if urlEvent == nil {
+		reg.Logger.Fatal("Got urlEvent==nil")
+		return false
+	}
 	urlScraped, attempts, err := reg.FetchHelper.Try(reg.Fetcher, urlEvent.URL, urlEvent.Attempts)
 	if err != nil {
 		if attempts == pkg.NoRetry {
@@ -60,6 +64,9 @@ func (reg *Registry) handleURL(urlEvent *events.UrlEvent) bool {
 		} else {
 			reg.Retry(urlEvent)
 		}
+		return false
+	}
+	if urlScraped == nil {
 		return false
 	}
 

@@ -64,7 +64,7 @@ func (f Fetcher) Fetch(url string) (*events.UrlScrapedEvent, int, error) {
 		_ = resp.Body.Close()
 	}()
 
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusPartialContent {
 		return nil, resp.StatusCode, nil
 	}
 

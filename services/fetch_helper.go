@@ -13,16 +13,14 @@ import (
 
 // Dispatcher ?
 
-type FetchHelper struct {
-}
+type FetchHelper struct{}
 
 const MaxAttempts = 3
 
 func (hlp FetchHelper) Try(fetcher *Fetcher, url string, attempts uint) (*events.UrlScrapedEvent, uint, error) {
 	urlScraped, statusCode, err := fetcher.Fetch(url)
-	attempts++
-	// fmt.Println("\t", attempts, statusCode, url)
-	if err != nil || statusCode != http.StatusOK {
+	if err != nil || isSuccess(statusCode) {
+		attempts++
 		if err != nil {
 			log.Print("\tError:", err.Error())
 		} else {
@@ -48,4 +46,8 @@ func CanRetry(statusCode int, attempts uint, err error) bool {
 		return attempts < MaxAttempts
 	}
 	return true
+}
+
+func isSuccess(statusCode int) bool {
+	return statusCode != http.StatusOK && statusCode != http.StatusPartialContent
 }
