@@ -1,6 +1,7 @@
 package registries
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/romiras/url-meta-scraper/consumers"
@@ -51,13 +52,13 @@ func (reg *Registry) Close() {
 	}
 }
 
-func (reg *Registry) handleURL(url string) bool {
-	urlScraped, attempts, err := reg.FetchHelper.Try(reg.Fetcher, url, 0)
+func (reg *Registry) handleURL(urlEvent *events.UrlEvent) bool {
+	urlScraped, attempts, err := reg.FetchHelper.Try(reg.Fetcher, urlEvent.URL, urlEvent.Attempts)
 	if err != nil {
 		if attempts == pkg.NoRetry {
 			reg.Logger.Info("Giving up", err.Error())
 		} else {
-			reg.Retry(url, attempts)
+			reg.Retry(urlEvent)
 		}
 		return false
 	}
@@ -99,12 +100,12 @@ func (reg *Registry) produceFailedURLTask(urlFailed *events.UrlFailedEvent) erro
 	return nil
 }
 
-func (reg *Registry) Retry(url string, attempts uint) {
-	reg.Logger.Info("\tRetry", attempts, url, " -> failed-urls")
+func (reg *Registry) Retry(urlEvent *events.UrlEvent) {
+	reg.Logger.Info("\tRetry", urlEvent.Attempts, urlEvent.URL, " -> failed-urls")
 	urlFailed := events.UrlFailedEvent{
-		URL:      url,
+		URL:      urlEvent.URL,
 		FailedAt: time.Now().Unix(),
-		Attempts: attempts,
+		Attempts: urlEvent.Attempts,
 	}
 	err := reg.produceFailedURLTask(&urlFailed)
 	if err != nil {
@@ -113,12 +114,17 @@ func (reg *Registry) Retry(url string, attempts uint) {
 }
 
 func (reg *Registry) ConsumerHandler(deliveries <-chan amqp.Delivery, logger log.Logger) {
+	var urlEvent *events.UrlEvent
 	multiAck := false
 	for msg := range deliveries {
 		logger.Info("-> msg")
-		reg.handleURL(string(msg.Body))
+		err := json.Unmarshal(msg.Body, &urlEvent)
+		if err != nil {
+			logger.Error(err)
+		}
+		_ = reg.handleURL(urlEvent)
 
-		err := msg.Ack(multiAck)
+		err = msg.Ack(multiAck)
 		if err != nil {
 			logger.Error(err)
 		}

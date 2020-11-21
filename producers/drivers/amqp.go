@@ -54,6 +54,7 @@ func (pr *AmqpProducer) Produce(task *producers.Task, producerOptions ...options
 	}
 
 	pub := amqp.Publishing{
+		// MessageId:    "",
 		Body:         b,
 		Headers:      amqp.Table{},
 		ContentType:  "application/json",
